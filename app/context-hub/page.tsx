@@ -8,6 +8,8 @@ import SwipeFilesPanel from "./components/SwipeFilesPanel";
 import MetaCommentsPanel from "./components/MetaCommentsPanel";
 import AdAccountPanel from "./components/AdAccountPanel";
 import PlaceholderPanel from "./components/PlaceholderPanel";
+import ReviewsPanel from "./components/ReviewsPanel";
+import CompetitorAdsPanel from "./components/CompetitorAdsPanel";
 
 const BRAND_ID = "winespies";
 
@@ -47,6 +49,10 @@ export default function ContextHubPage() {
         return <SwipeFilesPanel onChanged={fetchStatus} />;
       case "meta-comments":
         return <MetaCommentsPanel />;
+      case "reviews":
+        return <ReviewsPanel onChanged={fetchStatus} />;
+      case "competitor-ads":
+        return <CompetitorAdsPanel />;
       case "ad-account":
         return <AdAccountPanel />;
       case "placeholder":

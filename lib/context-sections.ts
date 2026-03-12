@@ -1,4 +1,4 @@
-export type SectionType = "markdown" | "swipe-files" | "meta-comments" | "ad-account" | "placeholder";
+export type SectionType = "markdown" | "swipe-files" | "meta-comments" | "ad-account" | "reviews" | "competitor-ads" | "placeholder";
 
 export interface SectionDef {
   id: string;
@@ -50,6 +50,8 @@ export const CATEGORIES: CategoryDef[] = [
     sections: [
       { id: "swipe-files", label: "Swipe Files", type: "swipe-files" },
       { id: "meta-comments", label: "Meta Ad Comments", type: "meta-comments" },
+      { id: "reviews", label: "Reviews (Slack & upload)", type: "reviews" },
+      { id: "competitor-ads", label: "Competitor Ads", type: "competitor-ads" },
       { id: "ad-account", label: "Ad Account Details", type: "ad-account" },
     ],
   },

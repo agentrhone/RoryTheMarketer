@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
@@ -30,7 +31,8 @@ export default function RootLayout({
       >
         <nav className="border-b border-border bg-surface sticky top-0 z-10">
           <div className="max-w-6xl mx-auto px-6 h-14 flex items-center gap-8">
-            <Link href="/" className="font-semibold text-lg tracking-tight text-foreground">
+            <Link href="/" className="flex items-center gap-2 font-semibold text-lg tracking-tight text-foreground">
+              <Image src="/logo.webp" alt="Rory" width={32} height={32} className="rounded object-contain" />
               Rory
             </Link>
             <div className="flex gap-6 text-sm">
@@ -48,6 +50,9 @@ export default function RootLayout({
               </Link>
               <Link href="/ad-builder" className="text-muted hover:text-foreground transition-colors">
                 Ad Builder
+              </Link>
+              <Link href="/instagram-research" className="text-muted hover:text-foreground transition-colors">
+                IG Research
               </Link>
             </div>
           </div>
