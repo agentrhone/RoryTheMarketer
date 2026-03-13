@@ -122,7 +122,7 @@ export async function generateAdImage(
   }
 
   const response = await getGenAI().models.generateContent({
-    model: "gemini-2.0-flash-exp-image-generation",
+    model: "gemini-3-pro-image-preview",
     contents: [{ role: "user", parts: contents }],
     config: {
       responseModalities: ["IMAGE", "TEXT"],
