@@ -53,6 +53,8 @@ export default function AdBuilderPage() {
   const [copyVariations, setCopyVariations] = useState<
     { primaryText: string; headline: string; description: string }[]
   >([]);
+  const [staticsGenerating, setStaticsGenerating] = useState(false);
+  const [staticsError, setStaticsError] = useState("");
 
   // Generations
   const [generations, setGenerations] = useState<GeneratedAd[]>([]);
@@ -232,6 +234,58 @@ export default function AdBuilderPage() {
     }
   };
 
+  const handleGenerateStatics = async () => {
+    if (
+      !bottleFile ||
+      copyVariations.length === 0 ||
+      !selectedReferenceId
+    )
+      return;
+    setStaticsGenerating(true);
+    setStaticsError("");
+    try {
+      const fd = new FormData();
+      fd.append("brand", BRAND_ID);
+      fd.append("referenceId", selectedReferenceId);
+      fd.append("variations", JSON.stringify(copyVariations));
+      fd.append(
+        "wineDetailsOverride",
+        JSON.stringify({
+          score: details.score || undefined,
+          retailPrice: details.retailPrice || undefined,
+          salePrice: details.salePrice || undefined,
+          promoCode: details.promoCode || undefined,
+          ctaText: details.ctaText || undefined,
+        }),
+      );
+      fd.append("bottleImage", bottleFile);
+      if (bgFile) fd.append("backgroundImage", bgFile);
+      const res = await fetch("/api/ad-reference/generate-statics", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStaticsError(data.error || `Request failed (${res.status})`);
+        return;
+      }
+      if (data.generations?.length) {
+        setGenerations((prev) => [...data.generations, ...prev]);
+      }
+      if (data.failures?.length) {
+        setStaticsError(
+          `Some failed: ${data.failures.map((f: { index: number; error: string }) => `#${f.index} ${f.error}`).join("; ")}`
+        );
+      }
+    } catch (err) {
+      setStaticsError(
+        err instanceof Error ? err.message : "Failed to generate static ads"
+      );
+    } finally {
+      setStaticsGenerating(false);
+    }
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight mb-1">
@@ -337,27 +391,53 @@ export default function AdBuilderPage() {
               )}
 
               {copyVariations.length > 0 && (
-                <div className="border border-border rounded-lg bg-background/50 p-3 space-y-3 max-h-72 overflow-auto">
-                  {copyVariations.map((v, idx) => (
-                    <div
-                      key={idx}
-                      className="text-xs border-b last:border-b-0 border-border/60 pb-3 last:pb-0 mb-3 last:mb-0"
-                    >
-                      <p className="font-semibold mb-1">
-                        Variation {idx + 1}
-                      </p>
-                      <p className="font-medium mb-1">{v.headline}</p>
-                      <p className="mb-1 whitespace-pre-wrap">
-                        {v.primaryText}
-                      </p>
-                      {v.description && (
-                        <p className="text-muted whitespace-pre-wrap">
-                          {v.description}
+                <>
+                  <div className="border border-border rounded-lg bg-background/50 p-3 space-y-3 max-h-72 overflow-auto">
+                    {copyVariations.map((v, idx) => (
+                      <div
+                        key={idx}
+                        className="text-xs border-b last:border-b-0 border-border/60 pb-3 last:pb-0 mb-3 last:mb-0"
+                      >
+                        <p className="font-semibold mb-1">
+                          Variation {idx + 1}
                         </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        <p className="font-medium mb-1">{v.headline}</p>
+                        <p className="mb-1 whitespace-pre-wrap">
+                          {v.primaryText}
+                        </p>
+                        {v.description && (
+                          <p className="text-muted whitespace-pre-wrap">
+                            {v.description}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-3 border-t border-border">
+                    <p className="text-xs text-muted mb-2">
+                      Generate one static ad image per variation using the
+                      reference ad&apos;s layout and the bottle (and optional
+                      background) from the Images section above.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleGenerateStatics}
+                      disabled={
+                        !bottleFile || staticsGenerating
+                      }
+                      className="px-4 py-2.5 text-sm font-medium bg-accent text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      {staticsGenerating
+                        ? "Generating static ads..."
+                        : `Generate ${copyVariations.length} static ad${copyVariations.length !== 1 ? "s" : ""}`}
+                    </button>
+                    {staticsError && (
+                      <p className="mt-2 text-sm text-danger">
+                        {staticsError}
+                      </p>
+                    )}
+                  </div>
+                </>
               )}
             </>
           )}

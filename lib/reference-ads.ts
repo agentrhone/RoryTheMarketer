@@ -134,3 +134,11 @@ export function getReferenceAdById(id: string): ReferenceAd | null {
   return null;
 }
 
+/** Path to the reference ad's style image (e.g. PDP_CULT_1.png), or null if none. */
+export function getReferenceAdStyleImagePath(referenceId: string): string | null {
+  const ad = getReferenceAdById(referenceId);
+  if (!ad?.meta.imageFile) return null;
+  const dir = getStaticAdsDir();
+  const imagePath = path.join(dir, ad.meta.imageFile);
+  return fs.existsSync(imagePath) ? imagePath : null;
+}
