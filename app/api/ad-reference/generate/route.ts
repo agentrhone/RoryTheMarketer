@@ -10,7 +10,16 @@ const client = new Anthropic();
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON body" },
+      { status: 400 },
+    );
+  }
+
   const brandId = (body.brand as string | undefined) ?? undefined;
   const referenceId = (body.referenceId as string | undefined) ?? undefined;
   const wineDetails = (body.wineDetails as
@@ -54,57 +63,66 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const bundle = getContextBundle(brandId);
-  const contextText = formatContextForPrompt(bundle);
-
-  const { system, user, numberOfVariations } = buildMetaStaticNanoBananaPrompt({
-    brandName: brandId,
-    contextText,
-    referenceAd,
-    wineDetailsOverride: wineDetails,
-  });
-
-  const msg = await client.messages.create({
-    model: "claude-sonnet-4-5-20250514",
-    max_tokens: 2000,
-    system,
-    messages: [{ role: "user", content: user }],
-  });
-
-  const text = msg.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim();
-
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    const bundle = getContextBundle(brandId);
+    const contextText = formatContextForPrompt(bundle);
+
+    const { system, user, numberOfVariations } = buildMetaStaticNanoBananaPrompt({
+      brandName: brandId,
+      contextText,
+      referenceAd,
+      wineDetailsOverride: wineDetails,
+    });
+
+    const msg = await client.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 2000,
+      system,
+      messages: [{ role: "user", content: user }],
+    });
+
+    const text = msg.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .trim();
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return NextResponse.json(
+        {
+          error: "Model response was not valid JSON",
+          raw: text,
+        },
+        { status: 502 },
+      );
+    }
+
+    if (!Array.isArray(parsed)) {
+      return NextResponse.json(
+        {
+          error: "Expected an array of variations from model",
+          raw: parsed,
+        },
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json({
+      referenceId,
+      brand: brandId,
+      expectedVariations: numberOfVariations,
+      variations: parsed,
+    });
   } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Ad copy generation failed";
     return NextResponse.json(
-      {
-        error: "Model response was not valid JSON",
-        raw: text,
-      },
-      { status: 502 },
+      { error: message },
+      { status: 500 },
     );
   }
-
-  if (!Array.isArray(parsed)) {
-    return NextResponse.json(
-      {
-        error: "Expected an array of variations from model",
-        raw: parsed,
-      },
-      { status: 502 },
-    );
-  }
-
-  return NextResponse.json({
-    referenceId,
-    brand: brandId,
-    expectedVariations: numberOfVariations,
-    variations: parsed,
-  });
 }
 

@@ -60,7 +60,7 @@ Comment sample (${Math.min(comments.length, 600)} of ${comments.length}):
 ${sample}`;
 
   const msg = await client.messages.create({
-    model: "claude-sonnet-4-5-20250514",
+    model: "claude-sonnet-4-5",
     max_tokens: 1200,
     system,
     messages: [{ role: "user", content: user }],

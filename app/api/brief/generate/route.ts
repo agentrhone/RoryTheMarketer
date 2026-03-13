@@ -61,7 +61,7 @@ Write briefs in a structured format with clear sections. Be specific and actiona
   ].filter(Boolean).join("\n");
 
   const msg = await client.messages.create({
-    model: "claude-sonnet-4-5-20250514",
+    model: "claude-sonnet-4-5",
     max_tokens: 2000,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],

@@ -206,8 +206,22 @@ export default function AdBuilderPage() {
           },
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to generate copy");
+      const raw = await res.text();
+      let data: { error?: string; variations?: { primaryText: string; headline: string; description: string }[] };
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        setCopyError(
+          res.ok
+            ? "Invalid response from server"
+            : raw || `Request failed (${res.status})`
+        );
+        return;
+      }
+      if (!res.ok) {
+        setCopyError(data.error || raw || `Request failed (${res.status})`);
+        return;
+      }
       setCopyVariations(data.variations || []);
     } catch (err) {
       setCopyError(
