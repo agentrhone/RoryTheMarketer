@@ -152,13 +152,14 @@ export function buildMetaStaticNanoBananaPrompt(
   );
 
   userLines.push("");
-  userLines.push("OUTPUT FORMAT:");
+  userLines.push("OUTPUT FORMAT (critical):");
   userLines.push(
-    `Return exactly ${numberOfVariations} variations as a JSON array, no commentary.`,
+    `Reply with ONLY a raw JSON array of exactly ${numberOfVariations} objects. No markdown, no code fences, no text before or after the array.`,
   );
   userLines.push(
-    'Each array element must be an object with keys: "primaryText", "headline", "description".',
+    'Each object must have exactly these keys: "primaryText", "headline", "description".',
   );
+  userLines.push("Example: [{\"primaryText\":\"...\",\"headline\":\"...\",\"description\":\"...\"}, ...]");
 
   const user = userLines.join("\n");
 

@@ -9,6 +9,19 @@ const client = new Anthropic();
 
 export const maxDuration = 60;
 
+/** Extract JSON array from model output; strip markdown code blocks if present. */
+function extractJsonArray(text: string): unknown {
+  let raw = text.trim();
+  const codeBlock = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlock) raw = codeBlock[1].trim();
+  const arrayStart = raw.indexOf("[");
+  if (arrayStart !== -1) {
+    const arrayEnd = raw.lastIndexOf("]");
+    if (arrayEnd > arrayStart) raw = raw.slice(arrayStart, arrayEnd + 1);
+  }
+  return JSON.parse(raw);
+}
+
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;
   try {
@@ -89,12 +102,12 @@ export async function POST(req: NextRequest) {
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(text);
+      parsed = extractJsonArray(text);
     } catch {
       return NextResponse.json(
         {
           error: "Model response was not valid JSON",
-          raw: text,
+          raw: text.slice(0, 500),
         },
         { status: 502 },
       );
