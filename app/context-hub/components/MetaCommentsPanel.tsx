@@ -14,7 +14,6 @@ export default function MetaCommentsPanel() {
     generatedAt: string | null;
     summary: string;
   } | null>(null);
-  const [metaPostIdsStr, setMetaPostIdsStr] = useState("");
   const [metaBusy, setMetaBusy] = useState(false);
 
   const fetchMeta = useCallback(() => {
@@ -40,7 +39,7 @@ export default function MetaCommentsPanel() {
       <div className="rounded-lg border border-border bg-surface p-5">
         <div className="flex items-start justify-between gap-4">
           <p className="text-sm text-muted">
-            Sync comments from Meta Graph for specific post IDs, then generate comment themes.
+            Sync comments from the posts your active Meta ads promote (not from your page feed). Then generate themes for briefs.
           </p>
           <div className="text-right shrink-0">
             <div className="text-xs text-muted">
@@ -50,39 +49,22 @@ export default function MetaCommentsPanel() {
             </div>
             <div className="text-xs text-muted">
               {metaStatus
-                ? `${metaStatus.commentCount} comments across ${metaStatus.postCount} posts`
+                ? `${metaStatus.commentCount} comments from ${metaStatus.postCount} ad-backed posts`
                 : ""}
             </div>
           </div>
         </div>
 
         <div className="grid gap-3 mt-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-muted mb-1">Post IDs (one per line)</label>
-            <textarea
-              value={metaPostIdsStr}
-              onChange={(e) => setMetaPostIdsStr(e.target.value)}
-              rows={3}
-              placeholder={"e.g.\n123456789012345_987654321098765\n112233445566778_998877665544332"}
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background resize-y"
-            />
-          </div>
-
           <div className="flex items-end gap-2 flex-wrap">
             <button
               onClick={async () => {
-                const postIds = metaPostIdsStr
-                  .split(/\r?\n/)
-                  .map((s) => s.trim())
-                  .filter(Boolean);
                 setMetaBusy(true);
                 try {
-                  const payload: Record<string, unknown> = { brand: BRAND_ID };
-                  if (postIds.length > 0) payload.postIds = postIds;
                   await fetch("/api/meta-comments/sync", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify({ brand: BRAND_ID }),
                   });
                   fetchMeta();
                 } finally {
@@ -92,7 +74,7 @@ export default function MetaCommentsPanel() {
               disabled={metaBusy}
               className="px-4 py-2 text-sm font-medium bg-accent text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
             >
-              Sync comments
+              Sync comments from ads
             </button>
             <button
               onClick={async () => {

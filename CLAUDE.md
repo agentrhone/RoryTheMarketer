@@ -65,7 +65,7 @@ Use this outline when building or migrating the marketing ops hub (e.g. into a n
 
 - **Input:** List of ad IDs (or campaign IDs) you care about. Source: from Meta Marketing API (e.g. active ads for the account) or a config list.
 - **Storage:** `data/{brandId}/meta-comments.json` — e.g. `{ syncedAt, adIdToPostId: Record<string, string>, comments: { adId, postId, commentId, text, createdTime, from?, likeCount }[] }`. Optionally key by `campaignId` if you pass it.
-- **API route:** `POST /api/meta-comments/sync` — body: `{ brand, adIds?: string[], campaignIds?: string[] }`. For each ad, resolve post ID, fetch comments, aggregate, then write `data/{brandId}/meta-comments.json`.
+- **API route:** `POST /api/meta-comments/sync` — body: `{ brand, adIds?: string[], campaignIds?: string[] }`. Only syncs comments from **ads** (not arbitrary page posts): for each active ad, resolve post via `effective_object_story_id`, fetch comments on that post, aggregate, then write `data/{brandId}/meta-comments.json`. Do not accept raw `postIds` — comments are from the posts your ads promote.
 
 ### 3.3 Comment themes (Claude)
 

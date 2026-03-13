@@ -19,6 +19,16 @@ const DEFAULT_DETAILS: WineDetails = {
   additionalNotes: "",
 };
 
+type ReferenceAdSummary = {
+  id: string;
+  label: string;
+  angle?: string;
+  nanoBanana?: string;
+  imageFile?: string;
+  platform?: string;
+  format?: string;
+};
+
 export default function AdBuilderPage() {
   // Images
   const [bottleFile, setBottleFile] = useState<File | null>(null);
@@ -34,6 +44,15 @@ export default function AdBuilderPage() {
   const [selectedStyleIds, setSelectedStyleIds] = useState<Set<string>>(
     new Set()
   );
+
+  // Reference ads / copy
+  const [referenceAds, setReferenceAds] = useState<ReferenceAdSummary[]>([]);
+  const [selectedReferenceId, setSelectedReferenceId] = useState<string>("");
+  const [copyGenerating, setCopyGenerating] = useState(false);
+  const [copyError, setCopyError] = useState("");
+  const [copyVariations, setCopyVariations] = useState<
+    { primaryText: string; headline: string; description: string }[]
+  >([]);
 
   // Generations
   const [generations, setGenerations] = useState<GeneratedAd[]>([]);
@@ -52,6 +71,11 @@ export default function AdBuilderPage() {
     fetch(`/api/ad-builder/generations?brand=${BRAND_ID}`)
       .then((r) => r.json())
       .then((d) => setGenerations(d.generations || []))
+      .catch(() => {});
+
+    fetch(`/api/ad-reference/list?brand=${BRAND_ID}`)
+      .then((r) => r.json())
+      .then((d) => setReferenceAds(d.referenceAds || []))
       .catch(() => {});
   }, []);
 
@@ -158,6 +182,42 @@ export default function AdBuilderPage() {
   const genImgUrl = (gen: GeneratedAd) =>
     `/api/ad-builder/images?brand=${BRAND_ID}&path=generated/${gen.filename}`;
 
+  const handleGenerateCopyFromReference = async () => {
+    if (!selectedReferenceId) return;
+    setCopyGenerating(true);
+    setCopyError("");
+    setCopyVariations([]);
+
+    try {
+      const res = await fetch("/api/ad-reference/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand: BRAND_ID,
+          referenceId: selectedReferenceId,
+          wineDetails: {
+            headline: details.headline || undefined,
+            score: details.score || undefined,
+            retailPrice: details.retailPrice || undefined,
+            salePrice: details.salePrice || undefined,
+            promoCode: details.promoCode || undefined,
+            ctaText: details.ctaText || undefined,
+            additionalNotes: details.additionalNotes || undefined,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate copy");
+      setCopyVariations(data.variations || []);
+    } catch (err) {
+      setCopyError(
+        err instanceof Error ? err.message : "Something went wrong generating copy"
+      );
+    } finally {
+      setCopyGenerating(false);
+    }
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight mb-1">
@@ -191,11 +251,102 @@ export default function AdBuilderPage() {
         </div>
 
         {/* Wine Details */}
-        <div className="rounded-xl border border-border bg-surface p-6">
-          <h2 className="text-sm font-medium text-foreground mb-4">
-            Wine Details
-          </h2>
+        <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-foreground">Wine Details</h2>
+          </div>
           <WineDetailsForm details={details} onChange={setDetails} />
+        </div>
+
+        {/* Reference Ad Copy (Nano Banana) */}
+        <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-foreground">
+              Reference Ad Copy
+            </h2>
+            {referenceAds.length > 0 && (
+              <p className="text-xs text-muted">
+                Based on your saved static ads (Nano Banana prompts).
+              </p>
+            )}
+          </div>
+
+          {referenceAds.length === 0 ? (
+            <p className="text-sm text-muted">
+              Add markdown reference ads under{" "}
+              <code className="text-xs">
+                context/Examples/Ads/Static
+              </code>{" "}
+              to enable Nano Banana copy generation.
+            </p>
+          ) : (
+            <>
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] items-end">
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">
+                    Reference ad
+                  </label>
+                  <select
+                    value={selectedReferenceId}
+                    onChange={(e) => setSelectedReferenceId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background"
+                  >
+                    <option value="">Select a reference ad</option>
+                    {referenceAds.map((ad) => (
+                      <option key={ad.id} value={ad.id}>
+                        {ad.label}
+                        {ad.angle ? ` — ${ad.angle}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedReferenceId && (
+                    <p className="mt-1 text-xs text-muted">
+                      Uses the saved layout and Nano Banana prompt for this ad,
+                      but applies it to the wine details above.
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateCopyFromReference}
+                  disabled={!selectedReferenceId || copyGenerating}
+                  className="px-4 py-2.5 text-sm font-medium bg-accent text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {copyGenerating ? "Generating copy..." : "Generate Copy"}
+                </button>
+              </div>
+
+              {copyError && (
+                <p className="text-sm text-danger bg-red-50 border border-red-200 rounded-lg p-3">
+                  {copyError}
+                </p>
+              )}
+
+              {copyVariations.length > 0 && (
+                <div className="border border-border rounded-lg bg-background/50 p-3 space-y-3 max-h-72 overflow-auto">
+                  {copyVariations.map((v, idx) => (
+                    <div
+                      key={idx}
+                      className="text-xs border-b last:border-b-0 border-border/60 pb-3 last:pb-0 mb-3 last:mb-0"
+                    >
+                      <p className="font-semibold mb-1">
+                        Variation {idx + 1}
+                      </p>
+                      <p className="font-medium mb-1">{v.headline}</p>
+                      <p className="mb-1 whitespace-pre-wrap">
+                        {v.primaryText}
+                      </p>
+                      {v.description && (
+                        <p className="text-muted whitespace-pre-wrap">
+                          {v.description}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* Style Picker */}

@@ -18,7 +18,6 @@ type GraphComment = {
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const brandId = body.brand as string | undefined;
-  const postIds = body.postIds as string[] | undefined;
   const campaignIds = body.campaignIds as string[] | undefined;
   const adIds = body.adIds as string[] | undefined;
   const limitAds = typeof body.limitAds === "number" ? body.limitAds : undefined;
@@ -29,13 +28,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid brand" }, { status: 400 });
   }
 
-  // If caller didn't provide specific post IDs, default to "running ads"
-  // by pulling ACTIVE ads and using effective_object_story_id.
+  // Only sync comments from ads: resolve post IDs via running ads (effective_object_story_id).
+  // We do not accept raw page post IDs — comments are pulled from the posts your ads promote.
   let resolvedAdIdToPostId: Record<string, string> = { ...(adIdToPostId ?? {}) };
-  if (
-    (!Array.isArray(postIds) || postIds.length === 0) &&
-    Object.keys(resolvedAdIdToPostId).length === 0
-  ) {
+  if (Object.keys(resolvedAdIdToPostId).length === 0) {
     const runningAds = await fetchRunningAdsWithStoryIds({
       brandId,
       campaignIds,
@@ -50,15 +46,17 @@ export async function POST(req: NextRequest) {
   }
 
   const uniquePostIds = Array.from(
-    new Set([
-      ...(Array.isArray(postIds) ? postIds : []),
-      ...Object.values(resolvedAdIdToPostId ?? {}),
-    ].filter((x) => typeof x === "string" && x.trim().length > 0))
+    new Set(
+      Object.values(resolvedAdIdToPostId ?? {}).filter((x) => typeof x === "string" && x.trim().length > 0)
+    )
   );
 
   if (uniquePostIds.length === 0) {
     return NextResponse.json(
-      { error: "No post IDs found. Provide postIds/adIdToPostId or configure META_AD_ACCOUNT_ID and ensure ads have effective_object_story_id." },
+      {
+        error:
+          "No ad-backed posts found. Configure META_AD_ACCOUNT_ID and ensure your active ads have effective_object_story_id (e.g. ads that promote a page post).",
+      },
       { status: 400 }
     );
   }
