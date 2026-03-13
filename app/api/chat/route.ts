@@ -16,6 +16,14 @@ export async function POST(req: NextRequest) {
     messages?: { role: "user" | "assistant"; content: string }[];
   };
 
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
+    return new Response(
+      JSON.stringify({
+        error: "ANTHROPIC_API_KEY is not set. Add it in Railway (or .env) and redeploy.",
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
   if (!brandId || !getBrand(brandId)) {
     return new Response(JSON.stringify({ error: "Invalid brand" }), {
       status: 400,
@@ -60,13 +68,22 @@ Use the brand context below to give grounded, specific advice. Reference the bra
 
 ${contextText}`;
 
-  // Stream response
-  const stream = client.messages.stream({
+  // Stream response (client uses process.env.ANTHROPIC_API_KEY)
+  let stream;
+  try {
+    stream = client.messages.stream({
     model: "claude-sonnet-4-5-20250514",
     max_tokens: 4096,
     system: systemPrompt,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
-  });
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return new Response(
+      JSON.stringify({ error: "Anthropic API error", details: message }),
+      { status: 502, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   let fullResponse = "";
 

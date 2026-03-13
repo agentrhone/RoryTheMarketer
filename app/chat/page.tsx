@@ -30,6 +30,7 @@ function ChatWindow({
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/chat/history?brand=${BRAND_ID}&chatId=${chatId}`)
@@ -54,6 +55,7 @@ function ChatWindow({
     setInput("");
     setStreaming(true);
     setStreamingContent("");
+    setError(null);
 
     try {
       const res = await fetch("/api/chat", {
@@ -69,9 +71,19 @@ function ChatWindow({
         }),
       });
 
-      if (!res.ok || !res.body) {
+      if (!res.ok) {
         setStreamingContent(null);
         setStreaming(false);
+        const data = await res.json().catch(() => ({}));
+        const msg = data?.error ?? data?.details ?? `Request failed (${res.status})`;
+        const detail = data?.details && data.details !== msg ? ` — ${data.details}` : "";
+        setError((typeof msg === "string" ? msg : data?.error || String(msg)) + detail);
+        return;
+      }
+      if (!res.body) {
+        setStreamingContent(null);
+        setStreaming(false);
+        setError("No response body");
         return;
       }
 
@@ -95,8 +107,9 @@ function ChatWindow({
       setMessages((prev) => [...prev, assistantMsg]);
       setStreamingContent(null);
       onTitleChange();
-    } catch {
+    } catch (e) {
       setStreamingContent(null);
+      setError(e instanceof Error ? e.message : "Network or request failed");
     } finally {
       setStreaming(false);
     }
@@ -104,6 +117,18 @@ function ChatWindow({
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      {error && (
+        <div className="mx-6 mt-4 p-4 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">
+          {error}
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="ml-2 underline hover:no-underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <MessageList messages={messages} streamingContent={streamingContent} />
       <ChatInput
         value={input}
