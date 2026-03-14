@@ -4,15 +4,16 @@ import { useState, useEffect, useCallback } from "react";
 import type {
   GeneratedAd,
   WineDetails,
-  AdType,
   AspectRatio,
   ImageBackend,
   CopyVariation,
 } from "@/lib/ad-builder";
 import StepIndicator from "./components/StepIndicator";
 import StepSelect from "./components/StepSelect";
+import type { ReferenceAdSummary } from "./components/StepSelect";
 import StepConfigure from "./components/StepConfigure";
 import StepGenerate from "./components/StepGenerate";
+import ReferenceAdEditor from "./components/ReferenceAdEditor";
 
 const BRAND_ID = "winespies";
 
@@ -27,17 +28,10 @@ const DEFAULT_DETAILS: WineDetails = {
   additionalNotes: "",
 };
 
-type ReferenceAdSummary = {
-  id: string;
-  label: string;
-  angle?: string;
-  nanoBanana?: string;
-  imageFile?: string;
-  platform?: string;
-  format?: string;
-  type?: AdType;
-  aspectRatio?: string;
-  notes?: string;
+type ReferenceAdEditorState = {
+  open: boolean;
+  mode: "create" | "edit";
+  referenceAd?: Record<string, unknown>;
 };
 
 export default function AdBuilderPage() {
@@ -47,6 +41,12 @@ export default function AdBuilderPage() {
   // --- Step 1: Select ---
   const [referenceAds, setReferenceAds] = useState<ReferenceAdSummary[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // --- Reference Ad Editor ---
+  const [editor, setEditor] = useState<ReferenceAdEditorState>({
+    open: false,
+    mode: "create",
+  });
 
   // --- Step 2: Configure ---
   const [bottleFile, setBottleFile] = useState<File | null>(null);
@@ -131,6 +131,69 @@ export default function AdBuilderPage() {
       return false;
     },
     [selectedIds.size],
+  );
+
+  // --- Reference Ad CRUD ---
+  const reloadReferenceAds = useCallback(() => {
+    fetch(`/api/ad-reference/list?brand=${BRAND_ID}`)
+      .then((r) => r.json())
+      .then((d) => setReferenceAds(d.referenceAds || []))
+      .catch(() => {});
+  }, []);
+
+  const openCreateEditor = useCallback(() => {
+    setEditor({ open: true, mode: "create" });
+  }, []);
+
+  const openEditEditor = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/ad-reference/detail?id=${id}`);
+      const data = await res.json();
+      if (res.ok && data.referenceAd) {
+        setEditor({ open: true, mode: "edit", referenceAd: data.referenceAd });
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleEditorSave = useCallback(() => {
+    setEditor({ open: false, mode: "create" });
+    reloadReferenceAds();
+  }, [reloadReferenceAds]);
+
+  const handleEditorDelete = useCallback(
+    (id: string) => {
+      setEditor({ open: false, mode: "create" });
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      reloadReferenceAds();
+    },
+    [reloadReferenceAds],
+  );
+
+  const handleDeleteFromGrid = useCallback(
+    async (id: string) => {
+      try {
+        const res = await fetch(`/api/ad-reference/delete?id=${id}`, {
+          method: "DELETE",
+        });
+        if (res.ok) {
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+          reloadReferenceAds();
+        }
+      } catch {
+        // ignore
+      }
+    },
+    [reloadReferenceAds],
   );
 
   // --- Copy Generation ---
@@ -371,6 +434,9 @@ export default function AdBuilderPage() {
             selectedIds={selectedIds}
             onToggle={toggleReference}
             onNext={() => setStep(2)}
+            onCreateNew={openCreateEditor}
+            onEdit={openEditEditor}
+            onDelete={handleDeleteFromGrid}
           />
         )}
 
@@ -418,6 +484,18 @@ export default function AdBuilderPage() {
           />
         )}
       </div>
+
+      {/* Reference Ad Editor Panel */}
+      {editor.open && (
+        <ReferenceAdEditor
+          mode={editor.mode}
+          referenceAd={editor.referenceAd as Record<string, unknown> & { id?: string; label: string; brand: string }}
+          brandId={BRAND_ID}
+          onSave={handleEditorSave}
+          onDelete={handleEditorDelete}
+          onClose={() => setEditor({ open: false, mode: "create" })}
+        />
+      )}
     </div>
   );
 }
