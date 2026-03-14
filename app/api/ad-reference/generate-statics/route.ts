@@ -3,13 +3,13 @@ import fs from "fs";
 import path from "path";
 import { nanoid } from "nanoid";
 import { getBrand } from "@/lib/brands";
-import type { WineDetails, GeneratedAd } from "@/lib/ad-builder";
+import type { WineDetails, GeneratedAd, AspectRatio } from "@/lib/ad-builder";
 import { GENERATED_SUBDIR } from "@/lib/ad-builder";
 import {
   getReferenceAdById,
   getReferenceAdStyleImagePath,
 } from "@/lib/reference-ads";
-import { addGeneration, getAdBuilderDir, ensureSubdir } from "@/lib/ad-builder-storage";
+import { addGeneration, ensureSubdir } from "@/lib/ad-builder-storage";
 import { generateAdImage } from "@/lib/gemini";
 
 export const maxDuration = 120;
@@ -62,6 +62,8 @@ export async function POST(req: NextRequest) {
   const wineDetailsOverrideRaw = formData.get("wineDetailsOverride") as string | null;
   const bottleImage = formData.get("bottleImage") as File | null;
   const backgroundImage = formData.get("backgroundImage") as File | null;
+  const aspectRatio = (formData.get("aspectRatio") as AspectRatio) || undefined;
+  const imagePromptModifier = (formData.get("imagePromptModifier") as string) || undefined;
 
   if (!brandId || !getBrand(brandId)) {
     return NextResponse.json({ error: "Invalid brand" }, { status: 400 });
@@ -157,6 +159,8 @@ export async function POST(req: NextRequest) {
         backgroundImageMimeType: bgMimeType,
         wineDetails,
         styleName: `${styleName} – variation ${idx + 1}`,
+        imagePromptModifier,
+        aspectRatio,
       });
 
       const genDir = ensureSubdir(brandId, GENERATED_SUBDIR);

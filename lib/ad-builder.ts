@@ -1,5 +1,94 @@
 // Ad Builder types and constants
 
+// --- Ad Type System ---
+
+export type AdType = "pdp" | "testimonial" | "comparison" | "offer" | "ugc";
+
+export interface AdTypeConfig {
+  label: string;
+  color: string;
+  textColor: string;
+  description: string;
+  fields: string[];
+}
+
+export const AD_TYPE_CONFIG: Record<AdType, AdTypeConfig> = {
+  pdp: {
+    label: "PDP / Product Hero",
+    color: "bg-violet-100 border-violet-300",
+    textColor: "text-violet-800",
+    description: "Product detail page hero ad with score, pricing, and CTA",
+    fields: ["headline", "score", "pullQuote", "retailPrice", "salePrice", "promoCode", "ctaText"],
+  },
+  testimonial: {
+    label: "Testimonial / Review",
+    color: "bg-amber-100 border-amber-300",
+    textColor: "text-amber-800",
+    description: "Social proof ad featuring a customer or critic review",
+    fields: ["reviewerName", "quoteText", "starRating", "productName", "headline"],
+  },
+  comparison: {
+    label: "Us vs Them",
+    color: "bg-blue-100 border-blue-300",
+    textColor: "text-blue-800",
+    description: "Side-by-side comparison highlighting value or quality",
+    fields: ["headline", "comparisonPoint", "retailPrice", "salePrice", "differentiators", "ctaText"],
+  },
+  offer: {
+    label: "Offer / Promo",
+    color: "bg-red-100 border-red-300",
+    textColor: "text-red-800",
+    description: "Time-sensitive promotion with urgency elements",
+    fields: ["headline", "retailPrice", "salePrice", "promoCode", "urgencyText", "ctaText"],
+  },
+  ugc: {
+    label: "UGC-Style",
+    color: "bg-green-100 border-green-300",
+    textColor: "text-green-800",
+    description: "Casual, user-generated content style ad",
+    fields: ["casualCopy", "productMention", "lifestyleContext", "headline"],
+  },
+};
+
+// --- Aspect Ratio ---
+
+export type AspectRatio = "1:1" | "4:5" | "9:16" | "16:9";
+
+export interface AspectRatioConfig {
+  width: number;
+  height: number;
+  label: string;
+}
+
+export const ASPECT_RATIO_CONFIG: Record<AspectRatio, AspectRatioConfig> = {
+  "1:1": { width: 1080, height: 1080, label: "Square (1:1)" },
+  "4:5": { width: 1080, height: 1350, label: "Portrait (4:5)" },
+  "9:16": { width: 1080, height: 1920, label: "Story (9:16)" },
+  "16:9": { width: 1920, height: 1080, label: "Landscape (16:9)" },
+};
+
+// --- Image Backend ---
+
+export type ImageBackend = "gemini" | "fal";
+
+// --- Copy Variation ---
+
+export interface CopyVariation {
+  primaryText: string;
+  headline: string;
+  description: string;
+}
+
+// --- Image Generation Settings ---
+
+export interface ImageGenerationSettings {
+  backend: ImageBackend;
+  aspectRatio: AspectRatio;
+  imagesPerPrompt: number;
+}
+
+// --- Core Types ---
+
 export interface AdStyle {
   id: string;
   name: string;
@@ -19,6 +108,10 @@ export interface GeneratedAd {
   filename: string;
   wineDetails: WineDetails;
   createdAt: string;
+  referenceAdId?: string;
+  copyVariation?: CopyVariation;
+  aspectRatio?: AspectRatio;
+  backend?: ImageBackend;
 }
 
 export interface GenerationsData {
@@ -35,6 +128,20 @@ export interface WineDetails {
   promoCode?: string;
   ctaText?: string;
   additionalNotes?: string;
+  // Testimonial fields
+  reviewerName?: string;
+  quoteText?: string;
+  starRating?: string;
+  productName?: string;
+  // Comparison fields
+  comparisonPoint?: string;
+  differentiators?: string;
+  // Offer fields
+  urgencyText?: string;
+  // UGC fields
+  casualCopy?: string;
+  productMention?: string;
+  lifestyleContext?: string;
 }
 
 export const STYLES_FILENAME = "styles.json";

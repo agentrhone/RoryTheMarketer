@@ -4,6 +4,8 @@ label: Wine Spies – PDP Cult 1
 brand: winespies
 platform: meta
 format: static_image
+type: pdp
+aspectRatio: "1:1"
 objective: conversions
 angle: cult_cabernet_deal
 nanoBanana: "98-point Napa Cab from Julian Fayard — $125 elsewhere, $25 today. Take another $50 off with FIRST50."

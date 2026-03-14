@@ -26,6 +26,9 @@ export async function GET(req: NextRequest) {
       imageFile: a.imageFile,
       platform: a.platform,
       format: a.format,
+      type: a.type,
+      aspectRatio: a.aspectRatio,
+      notes: a.notes,
     })),
   });
 }

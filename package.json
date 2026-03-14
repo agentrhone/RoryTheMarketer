@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@fal-ai/client": "^1.9.4",
     "@google/genai": "^1.44.0",
     "@notionhq/client": "^2.2.15",
     "apify-client": "^2.22.2",

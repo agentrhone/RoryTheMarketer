@@ -17,6 +17,7 @@ export interface ContextBundle {
   abTestLearnings: string;
   videoBrief: string;
   videoCreative: string;
+  imagePromptModifier: string;
 }
 
 export function getContextBundle(brandId: string): ContextBundle {
@@ -32,6 +33,7 @@ export function getContextBundle(brandId: string): ContextBundle {
     abTestLearnings: readMarkdownFile(path.join(dir, "ab-test-learnings.md")),
     videoBrief: readMarkdownFile(path.join(dir, "video_brief.md")),
     videoCreative: readMarkdownFile(path.join(dir, "video-creative.md")),
+    imagePromptModifier: readMarkdownFile(path.join(dir, "image-prompt-modifier.md")),
   };
 }
 

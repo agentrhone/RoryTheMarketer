@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
-import type { WineDetails } from "@/lib/ad-builder";
+import type { WineDetails, AspectRatio } from "@/lib/ad-builder";
+import { ASPECT_RATIO_CONFIG } from "@/lib/ad-builder";
 
 let _genAI: GoogleGenAI | null = null;
 
@@ -10,7 +11,7 @@ function getGenAI(): GoogleGenAI {
   return _genAI;
 }
 
-interface GenerateAdImageInput {
+export interface GenerateAdImageInput {
   referenceImageBase64: string;
   referenceImageMimeType: string;
   bottleImageBase64: string;
@@ -19,6 +20,8 @@ interface GenerateAdImageInput {
   backgroundImageMimeType?: string;
   wineDetails: WineDetails;
   styleName: string;
+  imagePromptModifier?: string;
+  aspectRatio?: AspectRatio;
 }
 
 interface GenerateAdImageResult {
@@ -26,9 +29,25 @@ interface GenerateAdImageResult {
   mimeType: string;
 }
 
-function buildPrompt(details: WineDetails, styleName: string): string {
-  const lines: string[] = [
-    `Create a professional 1080x1080 pixel square wine offer advertisement.`,
+export function buildPrompt(
+  details: WineDetails,
+  styleName: string,
+  options?: { imagePromptModifier?: string; aspectRatio?: AspectRatio },
+): string {
+  const ar = options?.aspectRatio ?? "1:1";
+  const dims = ASPECT_RATIO_CONFIG[ar];
+  const lines: string[] = [];
+
+  if (options?.imagePromptModifier) {
+    lines.push(
+      `BRAND VISUAL IDENTITY:`,
+      options.imagePromptModifier,
+      ``,
+    );
+  }
+
+  lines.push(
+    `Create a professional ${dims.width}x${dims.height} pixel wine offer advertisement.`,
     ``,
     `STYLE REFERENCE: Match the layout, typography style, color scheme, and overall aesthetic of the provided reference image labeled "${styleName}". Use it as the design template.`,
     ``,
@@ -36,7 +55,7 @@ function buildPrompt(details: WineDetails, styleName: string): string {
     ``,
     `TEXT ELEMENTS TO INCLUDE:`,
     `- Headline: "${details.headline}"`,
-  ];
+  );
 
   if (details.score) {
     lines.push(`- Score/Rating: "${details.score}"`);
@@ -64,7 +83,7 @@ function buildPrompt(details: WineDetails, styleName: string): string {
   lines.push(
     ``,
     `REQUIREMENTS:`,
-    `- Exactly 1080x1080 pixels, square format`,
+    `- Exactly ${dims.width}x${dims.height} pixels`,
     `- All text must be clearly legible and spelled correctly`,
     `- Professional, polished design suitable for social media advertising`,
     `- Do not add any text or elements beyond what is specified above`,
@@ -81,7 +100,10 @@ function buildPrompt(details: WineDetails, styleName: string): string {
 export async function generateAdImage(
   input: GenerateAdImageInput
 ): Promise<GenerateAdImageResult> {
-  const prompt = buildPrompt(input.wineDetails, input.styleName);
+  const prompt = buildPrompt(input.wineDetails, input.styleName, {
+    imagePromptModifier: input.imagePromptModifier,
+    aspectRatio: input.aspectRatio,
+  });
 
   const contents = [
     {

@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 
+import type { AdType, AspectRatio } from "@/lib/ad-builder";
+
 export type ReferenceAdFrontmatter = {
   id: string;
   label: string;
@@ -15,6 +17,8 @@ export type ReferenceAdFrontmatter = {
   promptTemplateId: string;
   promptOverrides?: Record<string, unknown>;
   notes?: string;
+  type?: AdType;
+  aspectRatio?: AspectRatio;
 };
 
 export type ReferenceAd = {
@@ -78,6 +82,8 @@ export function listReferenceAds(): ReferenceAdFrontmatter[] {
       promptTemplateId: fm.promptTemplateId ?? "nano-banana-meta-static",
       promptOverrides: fm.promptOverrides ?? {},
       notes: fm.notes,
+      type: (fm as Record<string, unknown>).type as AdType | undefined,
+      aspectRatio: (fm as Record<string, unknown>).aspectRatio as AspectRatio | undefined,
     });
   }
 
@@ -113,6 +119,8 @@ export function getReferenceAdById(id: string): ReferenceAd | null {
       promptTemplateId: fm.promptTemplateId ?? "nano-banana-meta-static",
       promptOverrides: fm.promptOverrides ?? {},
       notes: fm.notes,
+      type: (fm as Record<string, unknown>).type as AdType | undefined,
+      aspectRatio: (fm as Record<string, unknown>).aspectRatio as AspectRatio | undefined,
     };
 
     const content = parsed.content ?? "";

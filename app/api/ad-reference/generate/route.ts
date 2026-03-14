@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
 
   const brandId = (body.brand as string | undefined) ?? undefined;
   const referenceId = (body.referenceId as string | undefined) ?? undefined;
+  const referenceIds = (body.referenceIds as string[] | undefined) ?? undefined;
   const wineDetails = (body.wineDetails as
     | {
         headline?: string;
@@ -52,26 +53,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid brand" }, { status: 400 });
   }
 
-  if (!referenceId) {
-    return NextResponse.json(
-      { error: "referenceId is required" },
-      { status: 400 },
-    );
-  }
+  // Support both single referenceId and array referenceIds
+  const ids = referenceIds ?? (referenceId ? [referenceId] : []);
 
-  const referenceAd = getReferenceAdById(referenceId);
-  if (!referenceAd) {
+  if (ids.length === 0) {
     return NextResponse.json(
-      { error: `Reference ad not found for id ${referenceId}` },
-      { status: 404 },
-    );
-  }
-
-  if (referenceAd.meta.brand && referenceAd.meta.brand !== brandId) {
-    return NextResponse.json(
-      {
-        error: `Reference ad ${referenceId} is configured for brand ${referenceAd.meta.brand}, not ${brandId}`,
-      },
+      { error: "referenceId or referenceIds is required" },
       { status: 400 },
     );
   }
@@ -79,6 +66,65 @@ export async function POST(req: NextRequest) {
   try {
     const bundle = getContextBundle(brandId);
     const contextText = formatContextForPrompt(bundle);
+
+    // If multiple IDs, generate for each and return grouped
+    if (ids.length > 1) {
+      const byReferenceId: Record<string, unknown[]> = {};
+
+      for (const id of ids) {
+        const refAd = getReferenceAdById(id);
+        if (!refAd) continue;
+        if (refAd.meta.brand && refAd.meta.brand !== brandId) continue;
+
+        const { system, user, numberOfVariations } = buildMetaStaticNanoBananaPrompt({
+          brandName: brandId,
+          contextText,
+          referenceAd: refAd,
+          wineDetailsOverride: wineDetails,
+        });
+
+        const msg = await client.messages.create({
+          model: "claude-sonnet-4-5",
+          max_tokens: 2000,
+          system,
+          messages: [{ role: "user", content: user }],
+        });
+
+        const text = msg.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("")
+          .trim();
+
+        try {
+          const parsed = extractJsonArray(text);
+          byReferenceId[id] = Array.isArray(parsed) ? parsed as unknown[] : [];
+        } catch {
+          byReferenceId[id] = [];
+        }
+      }
+
+      return NextResponse.json({ brand: brandId, byReferenceId });
+    }
+
+    // Single reference ID (original behavior)
+    const singleId = ids[0];
+    const referenceAd = getReferenceAdById(singleId);
+    if (!referenceAd) {
+      return NextResponse.json(
+        { error: `Reference ad not found for id ${singleId}` },
+        { status: 404 },
+      );
+    }
+
+    if (referenceAd.meta.brand && referenceAd.meta.brand !== brandId) {
+      return NextResponse.json(
+        {
+          error: `Reference ad ${singleId} is configured for brand ${referenceAd.meta.brand}, not ${brandId}`,
+        },
+        { status: 400 },
+      );
+    }
 
     const { system, user, numberOfVariations } = buildMetaStaticNanoBananaPrompt({
       brandName: brandId,
@@ -124,7 +170,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
-      referenceId,
+      referenceId: singleId,
       brand: brandId,
       expectedVariations: numberOfVariations,
       variations: parsed,

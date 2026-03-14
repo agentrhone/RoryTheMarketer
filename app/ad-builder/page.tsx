@@ -1,10 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { AdStyle, GeneratedAd, WineDetails } from "@/lib/ad-builder";
-import ImageUploadZone from "./components/ImageUploadZone";
-import WineDetailsForm from "./components/WineDetailsForm";
-import StylePicker from "./components/StylePicker";
+import type {
+  GeneratedAd,
+  WineDetails,
+  AdType,
+  AspectRatio,
+  ImageBackend,
+  CopyVariation,
+} from "@/lib/ad-builder";
+import StepIndicator from "./components/StepIndicator";
+import StepSelect from "./components/StepSelect";
+import StepConfigure from "./components/StepConfigure";
+import StepGenerate from "./components/StepGenerate";
 
 const BRAND_ID = "winespies";
 
@@ -27,61 +35,65 @@ type ReferenceAdSummary = {
   imageFile?: string;
   platform?: string;
   format?: string;
+  type?: AdType;
+  aspectRatio?: string;
+  notes?: string;
 };
 
 export default function AdBuilderPage() {
-  // Images
+  // --- Step Navigation ---
+  const [step, setStep] = useState(1);
+
+  // --- Step 1: Select ---
+  const [referenceAds, setReferenceAds] = useState<ReferenceAdSummary[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // --- Step 2: Configure ---
   const [bottleFile, setBottleFile] = useState<File | null>(null);
   const [bottlePreview, setBottlePreview] = useState<string>();
   const [bgFile, setBgFile] = useState<File | null>(null);
   const [bgPreview, setBgPreview] = useState<string>();
-
-  // Wine details
   const [details, setDetails] = useState<WineDetails>(DEFAULT_DETAILS);
-
-  // Styles
-  const [styles, setStyles] = useState<AdStyle[]>([]);
-  const [selectedStyleIds, setSelectedStyleIds] = useState<Set<string>>(
-    new Set()
-  );
-
-  // Reference ads / copy
-  const [referenceAds, setReferenceAds] = useState<ReferenceAdSummary[]>([]);
-  const [selectedReferenceId, setSelectedReferenceId] = useState<string>("");
+  const [copyVariations, setCopyVariations] = useState<
+    Record<string, CopyVariation[]>
+  >({});
   const [copyGenerating, setCopyGenerating] = useState(false);
   const [copyError, setCopyError] = useState("");
-  const [copyVariations, setCopyVariations] = useState<
-    { primaryText: string; headline: string; description: string }[]
-  >([]);
-  const [staticsGenerating, setStaticsGenerating] = useState(false);
-  const [staticsError, setStaticsError] = useState("");
+  const [backend, setBackend] = useState<ImageBackend>("gemini");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
+  const [imagesPerPrompt, setImagesPerPrompt] = useState(1);
+  const [imagePromptModifier, setImagePromptModifier] = useState("");
 
-  // Generations
+  // --- Step 3: Generate ---
   const [generations, setGenerations] = useState<GeneratedAd[]>([]);
-
-  // State
   const [generating, setGenerating] = useState(false);
-  const [progress, setProgress] = useState("");
-  const [error, setError] = useState("");
+  const [progress, setProgress] = useState<{
+    current: number;
+    total: number;
+    message: string;
+  } | null>(null);
 
-  // Load styles and generations on mount
+  // --- Load data on mount ---
   useEffect(() => {
-    fetch(`/api/ad-builder/styles?brand=${BRAND_ID}`)
+    fetch(`/api/ad-reference/list?brand=${BRAND_ID}`)
       .then((r) => r.json())
-      .then((d) => setStyles(d.styles || []))
+      .then((d) => setReferenceAds(d.referenceAds || []))
       .catch(() => {});
+
     fetch(`/api/ad-builder/generations?brand=${BRAND_ID}`)
       .then((r) => r.json())
       .then((d) => setGenerations(d.generations || []))
       .catch(() => {});
 
-    fetch(`/api/ad-reference/list?brand=${BRAND_ID}`)
+    fetch(`/api/context/image-prompt-modifier?brand=${BRAND_ID}`)
       .then((r) => r.json())
-      .then((d) => setReferenceAds(d.referenceAds || []))
+      .then((d) => setImagePromptModifier(d.content || ""))
       .catch(() => {});
   }, []);
 
-  // File preview helpers
+  // --- Helpers ---
+  const selectedAds = referenceAds.filter((a) => selectedIds.has(a.id));
+
   const handleBottleSelect = useCallback((file: File) => {
     setBottleFile(file);
     setBottlePreview(URL.createObjectURL(file));
@@ -102,8 +114,8 @@ export default function AdBuilderPage() {
     setBgPreview(undefined);
   }, []);
 
-  const toggleStyle = useCallback((id: string) => {
-    setSelectedStyleIds((prev) => {
+  const toggleReference = useCallback((id: string) => {
+    setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -111,68 +123,208 @@ export default function AdBuilderPage() {
     });
   }, []);
 
-  const canGenerate =
-    bottleFile && details.headline.trim() && selectedStyleIds.size > 0;
+  const canNavigateTo = useCallback(
+    (s: number) => {
+      if (s === 1) return true;
+      if (s === 2) return selectedIds.size > 0;
+      if (s === 3) return selectedIds.size > 0;
+      return false;
+    },
+    [selectedIds.size],
+  );
 
-  const handleGenerate = async () => {
-    if (!canGenerate || !bottleFile) return;
-    setGenerating(true);
-    setError("");
-    setProgress(
-      `Generating ${selectedStyleIds.size} ad${selectedStyleIds.size > 1 ? "s" : ""}...`
-    );
+  // --- Copy Generation ---
+  const handleGenerateCopy = async () => {
+    setCopyGenerating(true);
+    setCopyError("");
 
-    try {
-      const fd = new FormData();
-      fd.append("brand", BRAND_ID);
-      fd.append("bottleImage", bottleFile);
-      if (bgFile) fd.append("backgroundImage", bgFile);
-      fd.append("headline", details.headline);
-      fd.append("styleIds", JSON.stringify([...selectedStyleIds]));
+    const results: Record<string, CopyVariation[]> = {};
 
-      // Append optional fields
-      if (details.score) fd.append("score", details.score);
-      if (details.pullQuote) fd.append("pullQuote", details.pullQuote);
-      if (details.retailPrice) fd.append("retailPrice", details.retailPrice);
-      if (details.salePrice) fd.append("salePrice", details.salePrice);
-      if (details.promoCode) fd.append("promoCode", details.promoCode);
-      if (details.ctaText) fd.append("ctaText", details.ctaText);
-      if (details.additionalNotes)
-        fd.append("additionalNotes", details.additionalNotes);
-
-      const res = await fetch("/api/ad-builder/generate", {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Generation failed");
-
-      // Prepend new generations to list
-      if (data.generations?.length) {
-        setGenerations((prev) => [...data.generations, ...prev]);
+    for (const ad of selectedAds) {
+      try {
+        const res = await fetch("/api/ad-reference/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            brand: BRAND_ID,
+            referenceId: ad.id,
+            wineDetails: {
+              headline: details.headline || undefined,
+              score: details.score || undefined,
+              retailPrice: details.retailPrice || undefined,
+              salePrice: details.salePrice || undefined,
+              promoCode: details.promoCode || undefined,
+              ctaText: details.ctaText || undefined,
+              additionalNotes: details.additionalNotes || undefined,
+            },
+          }),
+        });
+        const raw = await res.text();
+        let data: {
+          variations?: CopyVariation[];
+          error?: string;
+        };
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch {
+          setCopyError(`Invalid response for ${ad.label}`);
+          continue;
+        }
+        if (!res.ok) {
+          setCopyError(data.error || `Failed for ${ad.label}`);
+          continue;
+        }
+        results[ad.id] = data.variations || [];
+      } catch (err) {
+        setCopyError(
+          err instanceof Error ? err.message : `Failed for ${ad.label}`,
+        );
       }
-
-      if (data.failures?.length) {
-        const failNames = data.failures
-          .map((f: { styleId: string; error: string }) => f.error)
-          .join("; ");
-        setError(`Some styles failed: ${failNames}`);
-      }
-
-      setProgress("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-      setProgress("");
-    } finally {
-      setGenerating(false);
     }
+
+    setCopyVariations(results);
+    setCopyGenerating(false);
   };
 
+  // --- Image Generation (batch) ---
+  const handleGenerate = async () => {
+    if (!bottleFile) return;
+    setGenerating(true);
+    setStep(3);
+
+    // Build list of jobs: (referenceAd, copyVariation?) pairs
+    type Job = { refAd: ReferenceAdSummary; variation?: CopyVariation };
+    const jobs: Job[] = [];
+
+    const hasCopy = Object.values(copyVariations).some((v) => v.length > 0);
+
+    if (hasCopy) {
+      for (const ad of selectedAds) {
+        const vars = copyVariations[ad.id] ?? [];
+        if (vars.length > 0) {
+          for (const v of vars) {
+            jobs.push({ refAd: ad, variation: v });
+          }
+        } else {
+          jobs.push({ refAd: ad });
+        }
+      }
+    } else {
+      for (const ad of selectedAds) {
+        jobs.push({ refAd: ad });
+      }
+    }
+
+    const total = jobs.length * (backend === "fal" ? imagesPerPrompt : 1);
+    let completed = 0;
+    setProgress({ current: 0, total, message: "Starting generation..." });
+
+    for (const job of jobs) {
+      const wineDetails: WineDetails = job.variation
+        ? {
+            ...details,
+            headline: job.variation.headline || details.headline,
+            pullQuote:
+              job.variation.primaryText?.slice(0, 120) || details.pullQuote,
+            additionalNotes: [
+              job.variation.primaryText,
+              job.variation.description,
+            ]
+              .filter(Boolean)
+              .join("\n\n") || details.additionalNotes,
+          }
+        : details;
+
+      try {
+        if (backend === "fal") {
+          const fd = new FormData();
+          fd.append("brand", BRAND_ID);
+          fd.append("referenceId", job.refAd.id);
+          fd.append("wineDetails", JSON.stringify(wineDetails));
+          fd.append("bottleImage", bottleFile);
+          if (bgFile) fd.append("backgroundImage", bgFile);
+          fd.append("aspectRatio", aspectRatio);
+          fd.append("imagesPerPrompt", String(imagesPerPrompt));
+          if (imagePromptModifier)
+            fd.append("imagePromptModifier", imagePromptModifier);
+
+          const res = await fetch("/api/ad-builder/generate-fal", {
+            method: "POST",
+            body: fd,
+          });
+          const data = await res.json();
+          if (data.generations?.length) {
+            setGenerations((prev) => [...data.generations, ...prev]);
+            completed += data.generations.length;
+          }
+          if (data.failures?.length) {
+            completed += data.failures.length;
+          }
+        } else {
+          // Gemini: use generate-statics if we have a variation, otherwise use generate
+          const fd = new FormData();
+          fd.append("brand", BRAND_ID);
+          fd.append("referenceId", job.refAd.id);
+          fd.append(
+            "variations",
+            JSON.stringify([
+              job.variation ?? {
+                primaryText: "",
+                headline: wineDetails.headline,
+                description: "",
+              },
+            ]),
+          );
+          fd.append(
+            "wineDetailsOverride",
+            JSON.stringify({
+              score: wineDetails.score || undefined,
+              retailPrice: wineDetails.retailPrice || undefined,
+              salePrice: wineDetails.salePrice || undefined,
+              promoCode: wineDetails.promoCode || undefined,
+              ctaText: wineDetails.ctaText || undefined,
+            }),
+          );
+          fd.append("bottleImage", bottleFile);
+          if (bgFile) fd.append("backgroundImage", bgFile);
+          if (aspectRatio) fd.append("aspectRatio", aspectRatio);
+          if (imagePromptModifier)
+            fd.append("imagePromptModifier", imagePromptModifier);
+
+          const res = await fetch("/api/ad-reference/generate-statics", {
+            method: "POST",
+            body: fd,
+          });
+          const data = await res.json();
+          if (data.generations?.length) {
+            setGenerations((prev) => [...data.generations, ...prev]);
+            completed += data.generations.length;
+          }
+          if (data.failures?.length) {
+            completed += data.failures.length;
+          }
+        }
+      } catch {
+        completed += backend === "fal" ? imagesPerPrompt : 1;
+      }
+
+      setProgress({
+        current: completed,
+        total,
+        message: `Generating ${completed}/${total}...`,
+      });
+    }
+
+    setProgress(null);
+    setGenerating(false);
+  };
+
+  // --- Delete Generation ---
   const handleDeleteGeneration = async (id: string) => {
     try {
       const res = await fetch(
         `/api/ad-builder/generations?brand=${BRAND_ID}&id=${id}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       );
       if (!res.ok) return;
       setGenerations((prev) => prev.filter((g) => g.id !== id));
@@ -181,108 +333,19 @@ export default function AdBuilderPage() {
     }
   };
 
-  const genImgUrl = (gen: GeneratedAd) =>
-    `/api/ad-builder/images?brand=${BRAND_ID}&path=generated/${gen.filename}`;
-
-  const handleGenerateCopyFromReference = async () => {
-    if (!selectedReferenceId) return;
-    setCopyGenerating(true);
-    setCopyError("");
-    setCopyVariations([]);
-
+  // --- Save Modifier ---
+  const handleSaveModifier = async () => {
     try {
-      const res = await fetch("/api/ad-reference/generate", {
+      await fetch("/api/context/image-prompt-modifier", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           brand: BRAND_ID,
-          referenceId: selectedReferenceId,
-          wineDetails: {
-            headline: details.headline || undefined,
-            score: details.score || undefined,
-            retailPrice: details.retailPrice || undefined,
-            salePrice: details.salePrice || undefined,
-            promoCode: details.promoCode || undefined,
-            ctaText: details.ctaText || undefined,
-            additionalNotes: details.additionalNotes || undefined,
-          },
+          content: imagePromptModifier,
         }),
       });
-      const raw = await res.text();
-      let data: { error?: string; variations?: { primaryText: string; headline: string; description: string }[] };
-      try {
-        data = raw ? JSON.parse(raw) : {};
-      } catch {
-        setCopyError(
-          res.ok
-            ? "Invalid response from server"
-            : raw || `Request failed (${res.status})`
-        );
-        return;
-      }
-      if (!res.ok) {
-        setCopyError(data.error || raw || `Request failed (${res.status})`);
-        return;
-      }
-      setCopyVariations(data.variations || []);
-    } catch (err) {
-      setCopyError(
-        err instanceof Error ? err.message : "Something went wrong generating copy"
-      );
-    } finally {
-      setCopyGenerating(false);
-    }
-  };
-
-  const handleGenerateStatics = async () => {
-    if (
-      !bottleFile ||
-      copyVariations.length === 0 ||
-      !selectedReferenceId
-    )
-      return;
-    setStaticsGenerating(true);
-    setStaticsError("");
-    try {
-      const fd = new FormData();
-      fd.append("brand", BRAND_ID);
-      fd.append("referenceId", selectedReferenceId);
-      fd.append("variations", JSON.stringify(copyVariations));
-      fd.append(
-        "wineDetailsOverride",
-        JSON.stringify({
-          score: details.score || undefined,
-          retailPrice: details.retailPrice || undefined,
-          salePrice: details.salePrice || undefined,
-          promoCode: details.promoCode || undefined,
-          ctaText: details.ctaText || undefined,
-        }),
-      );
-      fd.append("bottleImage", bottleFile);
-      if (bgFile) fd.append("backgroundImage", bgFile);
-      const res = await fetch("/api/ad-reference/generate-statics", {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setStaticsError(data.error || `Request failed (${res.status})`);
-        return;
-      }
-      if (data.generations?.length) {
-        setGenerations((prev) => [...data.generations, ...prev]);
-      }
-      if (data.failures?.length) {
-        setStaticsError(
-          `Some failed: ${data.failures.map((f: { index: number; error: string }) => `#${f.index} ${f.error}`).join("; ")}`
-        );
-      }
-    } catch (err) {
-      setStaticsError(
-        err instanceof Error ? err.message : "Failed to generate static ads"
-      );
-    } finally {
-      setStaticsGenerating(false);
+    } catch {
+      // ignore
     }
   };
 
@@ -291,248 +354,68 @@ export default function AdBuilderPage() {
       <h1 className="text-2xl font-semibold tracking-tight mb-1">
         Ad Builder
       </h1>
-      <p className="text-muted mb-6">
-        Upload a bottle shot, fill in wine details, pick reference styles, and
-        generate finished ads.
+      <p className="text-muted mb-4">
+        Select templates, configure details, and generate finished ads.
       </p>
 
-      <div className="space-y-6">
-        {/* Image Uploads */}
-        <div className="rounded-xl border border-border bg-surface p-6">
-          <h2 className="text-sm font-medium text-foreground mb-4">
-            Images
-          </h2>
-          <div className="grid grid-cols-2 gap-4">
-            <ImageUploadZone
-              label="Bottle Shot (required)"
-              onFileSelect={handleBottleSelect}
-              previewUrl={bottlePreview}
-              onClear={clearBottle}
-            />
-            <ImageUploadZone
-              label="Background (optional)"
-              onFileSelect={handleBgSelect}
-              previewUrl={bgPreview}
-              onClear={clearBg}
-            />
-          </div>
-        </div>
+      <StepIndicator
+        currentStep={step}
+        onStepClick={setStep}
+        canNavigateTo={canNavigateTo}
+      />
 
-        {/* Wine Details */}
-        <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-foreground">Wine Details</h2>
-          </div>
-          <WineDetailsForm details={details} onChange={setDetails} />
-        </div>
-
-        {/* Reference Ad Copy (Nano Banana) */}
-        <div className="rounded-xl border border-border bg-surface p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-foreground">
-              Reference Ad Copy
-            </h2>
-            {referenceAds.length > 0 && (
-              <p className="text-xs text-muted">
-                Based on your saved static ads (Nano Banana prompts).
-              </p>
-            )}
-          </div>
-
-          {referenceAds.length === 0 ? (
-            <p className="text-sm text-muted">
-              Add markdown reference ads under{" "}
-              <code className="text-xs">
-                context/Examples/Ads/Static
-              </code>{" "}
-              to enable Nano Banana copy generation.
-            </p>
-          ) : (
-            <>
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] items-end">
-                <div>
-                  <label className="block text-xs font-medium text-muted mb-1">
-                    Reference ad
-                  </label>
-                  <select
-                    value={selectedReferenceId}
-                    onChange={(e) => setSelectedReferenceId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background"
-                  >
-                    <option value="">Select a reference ad</option>
-                    {referenceAds.map((ad) => (
-                      <option key={ad.id} value={ad.id}>
-                        {ad.label}
-                        {ad.angle ? ` — ${ad.angle}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedReferenceId && (
-                    <p className="mt-1 text-xs text-muted">
-                      Uses the saved layout and Nano Banana prompt for this ad,
-                      but applies it to the wine details above.
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleGenerateCopyFromReference}
-                  disabled={!selectedReferenceId || copyGenerating}
-                  className="px-4 py-2.5 text-sm font-medium bg-accent text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  {copyGenerating ? "Generating copy..." : "Generate Copy"}
-                </button>
-              </div>
-
-              {copyError && (
-                <p className="text-sm text-danger bg-red-50 border border-red-200 rounded-lg p-3">
-                  {copyError}
-                </p>
-              )}
-
-              {copyVariations.length > 0 && (
-                <>
-                  <div className="border border-border rounded-lg bg-background/50 p-3 space-y-3 max-h-72 overflow-auto">
-                    {copyVariations.map((v, idx) => (
-                      <div
-                        key={idx}
-                        className="text-xs border-b last:border-b-0 border-border/60 pb-3 last:pb-0 mb-3 last:mb-0"
-                      >
-                        <p className="font-semibold mb-1">
-                          Variation {idx + 1}
-                        </p>
-                        <p className="font-medium mb-1">{v.headline}</p>
-                        <p className="mb-1 whitespace-pre-wrap">
-                          {v.primaryText}
-                        </p>
-                        {v.description && (
-                          <p className="text-muted whitespace-pre-wrap">
-                            {v.description}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="pt-3 border-t border-border">
-                    <p className="text-xs text-muted mb-2">
-                      Generate one static ad image per variation using the
-                      reference ad&apos;s layout and the bottle (and optional
-                      background) from the Images section above.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleGenerateStatics}
-                      disabled={
-                        !bottleFile || staticsGenerating
-                      }
-                      className="px-4 py-2.5 text-sm font-medium bg-accent text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                    >
-                      {staticsGenerating
-                        ? "Generating static ads..."
-                        : `Generate ${copyVariations.length} static ad${copyVariations.length !== 1 ? "s" : ""}`}
-                    </button>
-                    {staticsError && (
-                      <p className="mt-2 text-sm text-danger">
-                        {staticsError}
-                      </p>
-                    )}
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Style Picker */}
-        <div className="rounded-xl border border-border bg-surface p-6">
-          <h2 className="text-sm font-medium text-foreground mb-4">
-            Reference Styles
-            {selectedStyleIds.size > 0 && (
-              <span className="ml-2 text-xs text-muted font-normal">
-                ({selectedStyleIds.size} selected)
-              </span>
-            )}
-          </h2>
-          <StylePicker
-            brandId={BRAND_ID}
-            styles={styles}
-            selectedIds={selectedStyleIds}
-            onToggle={toggleStyle}
-            onStyleAdded={(style) => setStyles((prev) => [...prev, style])}
-            onStyleDeleted={(id) => {
-              setStyles((prev) => prev.filter((s) => s.id !== id));
-              setSelectedStyleIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-              });
-            }}
+      <div className="rounded-xl border border-border bg-surface p-6">
+        {step === 1 && (
+          <StepSelect
+            referenceAds={referenceAds}
+            selectedIds={selectedIds}
+            onToggle={toggleReference}
+            onNext={() => setStep(2)}
           />
-        </div>
-
-        {/* Generate Button */}
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={!canGenerate || generating}
-          className="w-full px-4 py-3 text-sm font-medium bg-accent text-white rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {generating
-            ? progress || "Generating..."
-            : `Generate Ad${selectedStyleIds.size > 1 ? "s" : ""} (${selectedStyleIds.size} style${selectedStyleIds.size !== 1 ? "s" : ""})`}
-        </button>
-
-        {error && (
-          <p className="text-sm text-danger bg-red-50 border border-red-200 rounded-lg p-3">
-            {error}
-          </p>
         )}
 
-        {/* Results */}
-        {generations.length > 0 && (
-          <div className="rounded-xl border border-border bg-surface p-6">
-            <h2 className="text-sm font-medium text-foreground mb-4">
-              Generated Ads ({generations.length})
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {generations.map((gen) => (
-                <div
-                  key={gen.id}
-                  className="rounded-lg border border-border overflow-hidden"
-                >
-                  <img
-                    src={genImgUrl(gen)}
-                    alt={gen.styleName}
-                    className="w-full aspect-square object-cover"
-                  />
-                  <div className="p-2 space-y-1">
-                    <p className="text-xs font-medium truncate">
-                      {gen.styleName}
-                    </p>
-                    <p className="text-xs text-muted truncate">
-                      {gen.wineDetails.headline}
-                    </p>
-                    <div className="flex gap-2">
-                      <a
-                        href={genImgUrl(gen)}
-                        download={`ad-${gen.styleName.toLowerCase().replace(/\s+/g, "-")}-${gen.id}.png`}
-                        className="text-xs text-accent hover:underline"
-                      >
-                        Download
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteGeneration(gen.id)}
-                        className="text-xs text-muted hover:text-danger transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+        {step === 2 && (
+          <StepConfigure
+            brandId={BRAND_ID}
+            selectedAds={selectedAds}
+            bottleFile={bottleFile}
+            bottlePreview={bottlePreview}
+            onBottleSelect={handleBottleSelect}
+            onBottleClear={clearBottle}
+            bgFile={bgFile}
+            bgPreview={bgPreview}
+            onBgSelect={handleBgSelect}
+            onBgClear={clearBg}
+            details={details}
+            onDetailsChange={setDetails}
+            copyVariations={copyVariations}
+            onCopyVariationsChange={setCopyVariations}
+            copyGenerating={copyGenerating}
+            copyError={copyError}
+            onGenerateCopy={handleGenerateCopy}
+            backend={backend}
+            onBackendChange={setBackend}
+            aspectRatio={aspectRatio}
+            onAspectRatioChange={setAspectRatio}
+            imagesPerPrompt={imagesPerPrompt}
+            onImagesPerPromptChange={setImagesPerPrompt}
+            imagePromptModifier={imagePromptModifier}
+            onImagePromptModifierChange={setImagePromptModifier}
+            onSaveModifier={handleSaveModifier}
+            onGenerate={handleGenerate}
+            onBack={() => setStep(1)}
+            generating={generating}
+          />
+        )}
+
+        {step === 3 && (
+          <StepGenerate
+            brandId={BRAND_ID}
+            generations={generations}
+            progress={progress}
+            onDelete={handleDeleteGeneration}
+            onBack={() => setStep(2)}
+          />
         )}
       </div>
     </div>

@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { nanoid } from "nanoid";
 import { getBrand } from "@/lib/brands";
-import type { WineDetails, GeneratedAd } from "@/lib/ad-builder";
+import type { WineDetails, GeneratedAd, AspectRatio } from "@/lib/ad-builder";
 import { STYLES_SUBDIR, UPLOADS_SUBDIR, GENERATED_SUBDIR } from "@/lib/ad-builder";
 import {
   readStyles,
@@ -57,6 +57,9 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  const aspectRatio = (formData.get("aspectRatio") as AspectRatio) || undefined;
+  const imagePromptModifier = (formData.get("imagePromptModifier") as string) || undefined;
 
   // Build wine details from form fields
   const wineDetails: WineDetails = { headline };
@@ -130,6 +133,8 @@ export async function POST(req: NextRequest) {
         backgroundImageMimeType: bgMimeType,
         wineDetails,
         styleName: style.name,
+        imagePromptModifier,
+        aspectRatio,
       });
 
       // Save generated image
